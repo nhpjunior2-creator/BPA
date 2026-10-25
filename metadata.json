@@ -1,0 +1,6 @@
+{
+  "name": "Coleta Enfermagem BPA",
+  "description": "Aplicativo mobile para coleta de dados de enfermagem e Boletim de Produção Ambulatorial (BPA) com sincronização em nuvem e exportação de relatórios.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

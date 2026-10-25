@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Coleta Enfermagem BPA",
+  "short_name": "Enf BPA",
+  "description": "Aplicativo mobile para coleta de dados de enfermagem, BPA (SUS) e sincronização em nuvem com Google Drive e Firebase.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0f766e",
+  "background_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

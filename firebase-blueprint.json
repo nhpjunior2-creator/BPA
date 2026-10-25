@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Informações do profissional de enfermagem autenticado",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "coren": { "type": "string" },
+        "cns": { "type": "string" },
+        "unidadeSaude": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Atendimento": {
+      "title": "Atendimento",
+      "description": "Registro de atendimento ambulatorial de enfermagem para o BPA",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "docType": { "type": "string", "enum": ["SUS", "CPF"] },
+        "documento": { "type": "string" },
+        "nome": { "type": "string" },
+        "dataNasc": { "type": "string" },
+        "raca": { "type": "string" },
+        "telefone": { "type": "string" },
+        "cep": { "type": "string" },
+        "logradouro": { "type": "string" },
+        "numero": { "type": "string" },
+        "bairro": { "type": "string" },
+        "cidade": { "type": "string" },
+        "procedimentos": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "dataStr": { "type": "string" },
+        "horaStr": { "type": "string" },
+        "dataHoraIso": { "type": "string" },
+        "dataTimestamp": { "type": "number" },
+        "syncedToDrive": { "type": "boolean" }
+      },
+      "required": ["userId", "docType", "documento", "nome", "dataNasc", "procedimentos", "logradouro", "bairro", "cidade"]
+    },
+    "ProcedimentosConfig": {
+      "title": "ProcedimentosConfig",
+      "description": "Catálogo personalizado de procedimentos frequentes do profissional",
+      "type": "object",
+      "properties": {
+        "procedimentos": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["procedimentos"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Dados cadastrais do profissional de enfermagem"
+    },
+    "/users/{userId}/atendimentos/{atendimentoId}": {
+      "schema": "Atendimento",
+      "description": "Coleção de atendimentos e procedimentos registrados pelo profissional"
+    },
+    "/users/{userId}/config/procedimentos": {
+      "schema": "ProcedimentosConfig",
+      "description": "Configurações e histórico de procedimentos para preenchimento rápido"
+    }
+  }
+}

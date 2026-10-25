@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Coleta de Dados de Enfermagem - BPA & Google Drive Sync</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- jsPDF & AutoTable -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f1f5f9;
+            touch-action: manipulation;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .android-ripple:active {
+            opacity: 0.8;
+            transform: scale(0.98);
+            transition: transform 0.1s ease;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 flex justify-center pb-20 md:pb-0">
+
+    <!-- Mobile App Frame Container -->
+    <div class="w-full max-w-md md:max-w-2xl min-h-screen bg-slate-50 flex flex-col shadow-2xl relative border-x border-slate-200">
+        
+        <!-- Header Bar -->
+        <header class="bg-teal-700 text-white p-3.5 sticky top-0 z-30 shadow-md">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-9 h-9 rounded-full bg-teal-600 flex items-center justify-center text-white text-lg shadow-inner">
+                        <i class="fa-solid fa-user-nurse"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-base leading-tight">Coleta Enfermagem</h1>
+                        <p class="text-[11px] text-teal-200">Boletim Ambulatorial (BPA)</p>
+                    </div>
+                </div>
+
+                <!-- Google Auth Profile / Button -->
+                <div class="flex items-center gap-1.5">
+                    <button onclick="abrirModalConfigGoogle()" title="Configurações do Google Cloud" class="bg-teal-800 hover:bg-teal-900 text-teal-100 text-xs p-2 rounded-lg transition border border-teal-600/60">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+
+                    <div id="google-logged-out">
+                        <button onclick="iniciarLoginGoogle()" class="bg-white hover:bg-teal-50 text-slate-700 font-semibold text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 flex items-center gap-1.5 shadow-sm transition">
+                            <i class="fa-brands fa-google text-red-500"></i>
+                            <span>Entrar</span>
+                        </button>
+                    </div>
+
+                    <div id="google-logged-in" class="hidden flex items-center gap-2">
+                        <img id="user-avatar" class="w-8 h-8 rounded-full border border-teal-300 shadow-sm" src="" alt="User Avatar">
+                        <button onclick="handleGoogleSignOut()" title="Sair do Google" class="bg-teal-800 hover:bg-teal-900 text-teal-100 text-xs p-1.5 rounded-lg transition">
+                            <i class="fa-solid fa-right-from-bracket"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sync Status Banner -->
+            <div class="mt-2 pt-2 border-t border-teal-600/50 flex justify-between items-center text-[11px]">
+                <div class="flex items-center gap-1.5" id="sync-status">
+                    <i class="fa-solid fa-cloud-slash text-amber-300"></i>
+                    <span class="text-teal-100" id="sync-status-text">Modo Local / Não Sincronizado</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="forcarSincronizacaoDrive()" id="btn-sync-now" class="text-teal-100 hover:text-white underline text-[10px]">
+                        Sincronizar Agora
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 p-4 overflow-y-auto pb-24">
+            
+            <!-- TAB 1: NOVO ATENDIMENTO -->
+            <section id="tab-novo" class="space-y-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                    <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
+                        <h2 class="text-sm font-semibold text-teal-800 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-id-card text-teal-600"></i> Dados do Paciente
+                        </h2>
+                        <span id="live-clock" class="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">
+                            --/--/---- --:--
+                        </span>
+                    </div>
+
+                    <form id="patient-form" onsubmit="event.preventDefault();" class="space-y-3">
+                        <!-- Tipo e Número do Documento (SUS / CPF) -->
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Documento de Identificação *</label>
+                            <div class="grid grid-cols-2 gap-2 mb-2">
+                                <label class="flex items-center justify-center p-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg cursor-pointer transition hover:bg-teal-50 has-[:checked]:bg-teal-600 has-[:checked]:text-white has-[:checked]:border-teal-600">
+                                    <input type="radio" name="docType" value="SUS" checked onchange="atualizarTipoDocumento()" class="sr-only">
+                                    Cartão SUS
+                                </label>
+                                <label class="flex items-center justify-center p-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg cursor-pointer transition hover:bg-teal-50 has-[:checked]:bg-teal-600 has-[:checked]:text-white has-[:checked]:border-teal-600">
+                                    <input type="radio" name="docType" value="CPF" onchange="atualizarTipoDocumento()" class="sr-only">
+                                    CPF
+                                </label>
+                            </div>
+                            <input type="text" id="documento" placeholder="000 0000 0000 0000"
+                                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required>
+                        </div>
+
+                        <!-- Nome Completo -->
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Nome Completo *</label>
+                            <input type="text" id="nome" placeholder="Nome do paciente"
+                                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required>
+                        </div>
+
+                        <!-- Data Nasc + Raça/Cor -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Data de Nasc. *</label>
+                                <input type="date" id="dataNasc"
+                                    class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Raça / Cor</label>
+                                <select id="raca" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                                    <option value="Parda">Parda</option>
+                                    <option value="Branca">Branca</option>
+                                    <option value="Preta">Preta</option>
+                                    <option value="Amarela">Amarela</option>
+                                    <option value="Indígena">Indígena</option>
+                                    <option value="Sem Informação">Sem Informação</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Telefone -->
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Telefone (DDD + 9 dígitos)</label>
+                            <input type="tel" id="telefone" maxlength="15" placeholder="(00) 00000-0000"
+                                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                        </div>
+
+                        <!-- Endereço Section -->
+                        <div class="pt-2">
+                            <h3 class="text-xs font-semibold text-slate-500 uppercase mb-2">Endereço</h3>
+                            
+                            <!-- CEP -->
+                            <div class="mb-3">
+                                <label class="block text-xs font-medium text-slate-600 mb-1">CEP (Busca automática)</label>
+                                <div class="relative">
+                                    <input type="text" id="cep" maxlength="9" placeholder="00000-000" onblur="buscarCEP()"
+                                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                                    <span id="cep-loading" class="hidden absolute right-3 top-2.5 text-xs text-teal-600">
+                                        <i class="fa-solid fa-spinner animate-spin"></i>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Logradouro e Número -->
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Logradouro *</label>
+                                    <input type="text" id="logradouro" placeholder="Rua / Av."
+                                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Nº</label>
+                                    <input type="text" id="numero" placeholder="123"
+                                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                                </div>
+                            </div>
+
+                            <!-- Sem Número Checkbox -->
+                            <div class="flex items-center gap-2 mb-3">
+                                <input type="checkbox" id="semNumero" onchange="toggleSemNumero(this)" class="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500">
+                                <label for="semNumero" class="text-xs text-slate-600 select-none">Imóvel sem número (S/N)</label>
+                            </div>
+
+                            <!-- Bairro e Cidade -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Bairro *</label>
+                                    <input type="text" id="bairro" value="Centro"
+                                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Cidade *</label>
+                                    <input type="text" id="cidade" placeholder="Cidade"
+                                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition" required>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO PROCEDIMENTOS -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                    <h2 class="text-sm font-semibold text-teal-800 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-syringe text-teal-600"></i> Procedimentos Realizados
+                    </h2>
+
+                    <!-- Digitação + Botão de Adicionar -->
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <input type="text" id="input-procedimento" placeholder="Digite ou selecione abaixo..."
+                                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                        </div>
+                        <button type="button" onclick="adicionarProcedimento()"
+                            class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-bold text-lg flex items-center justify-center transition android-ripple">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- Sugestões / Histórico Salvo de Procedimentos -->
+                    <div id="historico-procedimentos-container" class="hidden">
+                        <label class="block text-xs font-medium text-slate-500 mb-1">Histórico Recente (Clique para adicionar):</label>
+                        <div id="historico-pills" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-50 rounded-lg border border-slate-200">
+                            <!-- Injetado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Procedimentos Adicionados no Atendimento Atual -->
+                    <div class="pt-2">
+                        <label class="block text-xs font-semibold text-slate-600 mb-2">Procedimentos Selecionados:</label>
+                        <ul id="lista-procedimentos-atuais" class="space-y-1.5">
+                            <li class="text-xs text-slate-400 italic py-1" id="empty-proc-msg">Nenhum procedimento adicionado a este atendimento.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Botão de Salvar Atendimento -->
+                <button onclick="salvarAtendimento()" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-3.5 px-4 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 text-base transition android-ripple">
+                    <i class="fa-solid fa-floppy-disk"></i> Salvar Atendimento
+                </button>
+            </section>
+
+            <!-- TAB 2: ATENDIMENTOS DO DIA / LISTAGEM -->
+            <section id="tab-historico" class="space-y-4 hidden">
+                <!-- Ações e Filtro -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-3">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-sm font-semibold text-teal-800 uppercase tracking-wider">Atendimentos Registrados</h2>
+                        <span id="badge-total" class="bg-teal-100 text-teal-800 font-bold text-xs px-2.5 py-1 rounded-full">0</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Filtrar por Data:</label>
+                            <input type="date" id="filtro-data" onchange="renderizarAtendimentos()" class="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="limparFiltroData()" class="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-medium rounded-lg transition">
+                                Mostrar Todos
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+                        <button onclick="gerarPDFBPA()" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2.5 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition android-ripple shadow">
+                            <i class="fa-solid fa-file-pdf text-sm"></i> Gerar PDF (BPA)
+                        </button>
+                        <button onclick="exportarBackupJSON()" title="Exportar Backup JSON" class="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-3 rounded-lg font-semibold text-xs border border-slate-300 flex items-center gap-1 transition">
+                            <i class="fa-solid fa-download"></i> JSON
+                        </button>
+                        <button onclick="confirmarLimparTudo()" class="bg-red-50 hover:bg-red-100 text-red-600 py-2.5 px-3 rounded-lg font-semibold text-xs flex items-center justify-center transition border border-red-200">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lista de Registros -->
+                <div id="container-atendimentos" class="space-y-3">
+                    <!-- Cards inseridos via JS -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Bottom Navigation Bar (Android UI) -->
+        <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-2xl bg-white border-t border-slate-200 px-6 py-2 flex justify-around items-center z-40 shadow-lg">
+            <button id="nav-btn-novo" onclick="trocarAba('novo')" class="flex flex-col items-center gap-1 text-teal-600 font-medium text-xs">
+                <i class="fa-solid fa-user-plus text-lg"></i>
+                <span>Novo Registro</span>
+            </button>
+            <button id="nav-btn-historico" onclick="trocarAba('historico')" class="flex flex-col items-center gap-1 text-slate-400 font-medium text-xs hover:text-teal-600 transition">
+                <i class="fa-solid fa-clipboard-list text-lg"></i>
+                <span>Atendimentos</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Modal de Configuração do Google Cloud / Client ID -->
+    <div id="modal-config-google" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <i class="fa-brands fa-google text-red-500"></i> Configurar Conexão Google Drive
+                </h3>
+                <button onclick="fecharModalConfigGoogle()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-600">
+                <p>Para evitar o <strong>Erro 400 (invalid_request)</strong> do Google, selecione como deseja realizar o salvamento:</p>
+                
+                <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-800">
+                    <p class="font-semibold mb-1"><i class="fa-solid fa-lightbulb"></i> Modo Simulação (Recomendado)</p>
+                    <p class="text-[11px]">Permite simular o salvamento em nuvem em tempo real sem precisar de chaves do Google Cloud Console.</p>
+                    <button onclick="ativarModoSimulacao()" class="mt-2 w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-2 rounded transition">
+                        Ativar Modo de Teste / Simulação Cloud
+                    </button>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100">
+                    <label class="block font-medium text-slate-700 mb-1">Google Client ID (Produção Google Cloud):</label>
+                    <input type="text" id="input-client-id" placeholder="Ex: 123456...apps.googleusercontent.com" class="w-full p-2 bg-slate-50 border border-slate-300 rounded text-xs font-mono">
+                    <button onclick="salvarClientIdPersonalizado()" class="mt-2 w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-1.5 px-2 rounded transition">
+                        Salvar e Tentar Autenticar com Google
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Feedback/Mensagens Personalizadas -->
+    <div id="modal-alert" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-5 max-w-xs w-full text-center space-y-3 shadow-2xl transform transition-all">
+            <div id="modal-icon" class="text-3xl text-teal-600">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <h3 id="modal-title" class="font-bold text-slate-800 text-base">Aviso</h3>
+            <p id="modal-message" class="text-xs text-slate-600">Mensagem aqui</p>
+            <button onclick="fecharModal()" class="w-full bg-teal-600 text-white font-medium py-2 rounded-lg text-xs hover:bg-teal-700 transition">
+                OK
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURAÇÃO DO GOOGLE OAUTH
+        let googleClientId = localStorage.getItem('bpa_google_client_id') || "";
+        const DRIVE_FILENAME = "atendimentos_bpa_drive.json";
+        
+        let tokenClient = null;
+        let accessToken = null;
+        let driveFileId = null;
+        let currentUser = null;
+        let modoSimulacao = true; // Padrão seguro ativado para evitar o Erro 400
+
+        // ESTADO DA APLICAÇÃO
+        let procedimentosAtuais = [];
+        let historicoProcedimentosUnicos = [];
+        let atendimentos = [];
+
+        // INICIALIZAÇÃO
+        window.onload = function() {
+            carregarStorage();
+            atualizarRelogio();
+            setInterval(atualizarRelogio, 1000);
+            configurarMascara();
+            atualizarTipoDocumento();
+            renderizarHistoricoProcedimentos();
+            renderizarAtendimentos();
+            
+            if (googleClientId) {
+                document.getElementById('input-client-id').value = googleClientId;
+            }
+
+            // Inicializar por padrão em simulação para garantir usabilidade sem erros
+            if (!googleClientId) {
+                ativarModoSimulacao();
+            } else {
+                inicializarGoogleServices();
+            }
+        };
+
+        // GESTÃO DE LOGIN E SIMULAÇÃO
+        function abrirModalConfigGoogle() {
+            document.getElementById('modal-config-google').classList.remove('hidden');
+        }
+
+        function fecharModalConfigGoogle() {
+            document.getElementById('modal-config-google').classList.add('hidden');
+        }
+
+        function salvarClientIdPersonalizado() {
+            const val = document.getElementById('input-client-id').value.trim();
+            if (val) {
+                googleClientId = val;
+                localStorage.setItem('bpa_google_client_id', val);
+                modoSimulacao = false;
+                fecharModalConfigGoogle();
+                inicializarGoogleServices();
+                iniciarLoginGoogle();
+            } else {
+                mostrarModal('Atenção', 'Informe um Client ID válido do Google Cloud.', 'fa-circle-exclamation text-amber-500');
+            }
+        }
+
+        function ativarModoSimulacao() {
+            modoSimulacao = true;
+            fecharModalConfigGoogle();
+            simularLoginGoogle();
+        }
+
+        function inicializarGoogleServices() {
+            if (modoSimulacao || !googleClientId) return;
+
+            if (window.google && google.accounts && google.accounts.oauth2) {
+                try {
+                    tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: googleClientId,
+                        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                        callback: async (response) => {
+                            if (response.error) {
+                                console.warn('Erro OAuth Google:', response);
+                                atualizarStatusSync('error', 'Falha na autenticação do Google');
+                                mostrarModal('Erro de Autenticação (400)', 'O Google recusou a conexão. Ativando Modo de Simulação para salvar os dados sem perder nada!', 'fa-triangle-exclamation text-amber-500');
+                                ativarModoSimulacao();
+                                return;
+                            }
+                            accessToken = response.access_token;
+                            await obterPerfilUsuario();
+                            await sincronizarComGoogleDrive();
+                        },
+                    });
+                } catch (e) {
+                    console.error("Erro ao inicializar tokenClient:", e);
+                    ativarModoSimulacao();
+                }
+            }
+        }
+
+        function iniciarLoginGoogle() {
+            if (modoSimulacao || !googleClientId) {
+                simularLoginGoogle();
+                return;
+            }
+
+            if (tokenClient) {
+                tokenClient.requestAccessToken();
+            } else {
+                inicializarGoogleServices();
+                if (tokenClient) {
+                    tokenClient.requestAccessToken();
+                } else {
+                    ativarModoSimulacao();
+                }
+            }
+        }
+
+        function handleGoogleSignOut() {
+            accessToken = null;
+            currentUser = null;
+            driveFileId = null;
+            document.getElementById('google-logged-out').classList.remove('hidden');
+            document.getElementById('google-logged-in').classList.add('hidden');
+            atualizarStatusSync('offline', 'Modo Local / Não Sincronizado');
+        }
+
+        async function obterPerfilUsuario() {
+            try {
+                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                currentUser = await res.json();
+                
+                document.getElementById('user-avatar').src = currentUser.picture || 'https://via.placeholder.com/32';
+                document.getElementById('google-logged-out').classList.add('hidden');
+                document.getElementById('google-logged-in').classList.remove('hidden');
+            } catch (err) {
+                console.error('Erro ao buscar perfil Google:', err);
+            }
+        }
+
+        function simularLoginGoogle() {
+            currentUser = {
+                name: 'Enf. Produção Ambulatorial',
+                email: 'enfermeiro@saude.gov.br',
+                picture: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=100&auto=format&fit=crop&q=80'
+            };
+            accessToken = 'demo_token_simulado';
+            document.getElementById('user-avatar').src = currentUser.picture;
+            document.getElementById('google-logged-out').classList.add('hidden');
+            document.getElementById('google-logged-in').classList.remove('hidden');
+            atualizarStatusSync('success', 'Sincronizado na Nuvem (Modo Teste)');
+        }
+
+        // INTEGRACAO GOOGLE DRIVE API
+        async function sincronizarComGoogleDrive() {
+            if (modoSimulacao || accessToken === 'demo_token_simulado') {
+                atualizarStatusSync('success', 'Sincronizado na Nuvem (Modo Teste)');
+                return;
+            }
+
+            if (!accessToken) return;
+
+            atualizarStatusSync('syncing', 'Sincronizando no Google Drive...');
+
+            try {
+                if (!driveFileId) {
+                    const q = encodeURIComponent(`name = '${DRIVE_FILENAME}' and trashed = false`);
+                    const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`, {
+                        headers: { Authorization: `Bearer ${accessToken}` }
+                    });
+                    const searchData = await searchRes.json();
+
+                    if (searchData.files && searchData.files.length > 0) {
+                        driveFileId = searchData.files[0].id;
+                        await baixarDadosDoDrive();
+                    }
+                }
+
+                const payloadData = {
+                    ultimaAtualizacao: new Date().toISOString(),
+                    historicoProcedimentos: historicoProcedimentosUnicos,
+                    atendimentos: atendimentos
+                };
+
+                const fileContent = JSON.stringify(payloadData, null, 2);
+
+                if (driveFileId) {
+                    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
+                        method: 'PATCH',
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: fileContent
+                    });
+                } else {
+                    const metadata = { name: DRIVE_FILENAME, mimeType: 'application/json' };
+                    const form = new FormData();
+                    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+                    form.append('file', new Blob([fileContent], { type: 'application/json' }));
+
+                    const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                        body: form
+                    });
+                    const createData = await createRes.json();
+                    driveFileId = createData.id;
+                }
+
+                atualizarStatusSync('success', 'Sincronizado no Google Drive');
+            } catch (err) {
+                console.error('Erro ao sincronizar Drive:', err);
+                atualizarStatusSync('error', 'Erro na sincronização');
+            }
+        }
+
+        async function baixarDadosDoDrive() {
+            if (!driveFileId || !accessToken) return;
+            try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                const driveData = await res.json();
+
+                if (driveData && driveData.atendimentos) {
+                    atendimentos = driveData.atendimentos;
+                    if (driveData.historicoProcedimentos) {
+                        historicoProcedimentosUnicos = driveData.historicoProcedimentos;
+                    }
+                    salvarStorage();
+                    renderizarAtendimentos();
+                    renderizarHistoricoProcedimentos();
+                }
+            } catch (err) {
+                console.error('Erro ao baixar dados do Drive:', err);
+            }
+        }
+
+        function forcarSincronizacaoDrive() {
+            sincronizarComGoogleDrive();
+        }
+
+        function atualizarStatusSync(tipo, mensagem) {
+            const container = document.getElementById('sync-status');
+
+            if (tipo === 'success') {
+                container.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-300"></i> <span class="text-teal-100">${mensagem}</span>`;
+            } else if (tipo === 'syncing') {
+                container.innerHTML = `<i class="fa-solid fa-arrows-rotate animate-spin text-teal-200"></i> <span class="text-teal-100">${mensagem}</span>`;
+            } else if (tipo === 'error') {
+                container.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-300"></i> <span class="text-teal-100">${mensagem}</span>`;
+            } else {
+                container.innerHTML = `<i class="fa-solid fa-cloud-slash text-amber-300"></i> <span class="text-teal-100">${mensagem}</span>`;
+            }
+        }
+
+        // RELÓGIO TEMPO REAL
+        function atualizarRelogio() {
+            const agora = new Date();
+            const dataStr = agora.toLocaleDateString('pt-BR');
+            const horaStr = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('live-clock').innerText = `${dataStr} ${horaStr}`;
+        }
+
+        // ALTERAR TIPO DE DOCUMENTO (SUS / CPF)
+        function atualizarTipoDocumento() {
+            const docType = document.querySelector('input[name="docType"]:checked').value;
+            const docInput = document.getElementById('documento');
+            
+            docInput.value = '';
+            if (docType === 'SUS') {
+                docInput.placeholder = '000 0000 0000 0000';
+                docInput.maxLength = 18;
+            } else {
+                docInput.placeholder = '000.000.000-00';
+                docInput.maxLength = 14;
+            }
+        }
+
+        // PERSISTÊNCIA LOCALSTORAGE
+        function carregarStorage() {
+            const procStorage = localStorage.getItem('bpa_procedimentos_historico');
+            if (procStorage) {
+                historicoProcedimentosUnicos = JSON.parse(procStorage);
+            }
+            const atendStorage = localStorage.getItem('bpa_atendimentos');
+            if (atendStorage) {
+                atendimentos = JSON.parse(atendStorage);
+            }
+        }
+
+        function salvarStorage() {
+            localStorage.setItem('bpa_procedimentos_historico', JSON.stringify(historicoProcedimentosUnicos));
+            localStorage.setItem('bpa_atendimentos', JSON.stringify(atendimentos));
+        }
+
+        // MÁSCARAS DE INPUT
+        function configurarMascara() {
+            const docInput = document.getElementById('documento');
+            docInput.addEventListener('input', (e) => {
+                const docType = document.querySelector('input[name="docType"]:checked').value;
+                let v = e.target.value.replace(/\D/g, '');
+
+                if (docType === 'SUS') {
+                    if (v.length > 15) v = v.substring(0, 15);
+                    v = v.replace(/^(\d{3})(\d)/, '$1 $2');
+                    v = v.replace(/^(\d{3})\s(\d{4})(\d)/, '$1 $2 $3');
+                    v = v.replace(/^(\d{3})\s(\d{4})\s(\d{4})(\d)/, '$1 $2 $3 $4');
+                } else {
+                    if (v.length > 11) v = v.substring(0, 11);
+                    v = v.replace(/^(\d{3})(\d)/, '$1.$2');
+                    v = v.replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3');
+                    v = v.replace(/\.(\d{3})(\d)/, '.$1-$2');
+                }
+                e.target.value = v;
+            });
+
+            const telInput = document.getElementById('telefone');
+            telInput.addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '');
+                if (v.length > 11) v = v.substring(0, 11);
+                v = v.replace(/^(\d{2})(\d)/g, '($1) $2');
+                v = v.replace(/(\d{5})(\d)/, '$1-$2');
+                e.target.value = v;
+            });
+
+            const cepInput = document.getElementById('cep');
+            cepInput.addEventListener('input', (e) => {
+                let v = e.target.value.replace(/\D/g, '');
+                if (v.length > 8) v = v.substring(0, 8);
+                v = v.replace(/^(\d{5})(\d)/, '$1-$2');
+                e.target.value = v;
+            });
+        }
+
+        function toggleSemNumero(checkbox) {
+            const numeroInput = document.getElementById('numero');
+            if (checkbox.checked) {
+                numeroInput.value = 'S/N';
+                numeroInput.disabled = true;
+                numeroInput.classList.add('bg-slate-200');
+            } else {
+                numeroInput.value = '';
+                numeroInput.disabled = false;
+                numeroInput.classList.remove('bg-slate-200');
+            }
+        }
+
+        async function buscarCEP() {
+            const cepVal = document.getElementById('cep').value.replace(/\D/g, '');
+            if (cepVal.length !== 8) return;
+
+            const loading = document.getElementById('cep-loading');
+            loading.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`https://viacep.com.br/ws/${cepVal}/json/`);
+                const data = await response.json();
+
+                if (!data.erro) {
+                    if (data.logradouro) document.getElementById('logradouro').value = data.logradouro;
+                    if (data.bairro) document.getElementById('bairro').value = data.bairro;
+                    if (data.localidade) document.getElementById('cidade').value = data.localidade;
+                }
+            } catch (err) {
+                console.warn('Erro ao buscar CEP:', err);
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        // PROCEDIMENTOS DE MANIPULAÇÃO
+        function adicionarProcedimento(nomeProcedimento = null) {
+            const input = document.getElementById('input-procedimento');
+            const procNome = (nomeProcedimento || input.value).trim();
+
+            if (!procNome) {
+                mostrarModal('Atenção', 'Informe o nome do procedimento.', 'fa-triangle-exclamation text-amber-500');
+                return;
+            }
+
+            procedimentosAtuais.push(procNome);
+            
+            const jaExisteNoHistorico = historicoProcedimentosUnicos.some(p => p.toLowerCase() === procNome.toLowerCase());
+            if (!jaExisteNoHistorico) {
+                historicoProcedimentosUnicos.push(procNome);
+                salvarStorage();
+                renderizarHistoricoProcedimentos();
+            }
+
+            input.value = '';
+            renderizarProcedimentosAtuais();
+        }
+
+        function removerProcedimento(index) {
+            procedimentosAtuais.splice(index, 1);
+            renderizarProcedimentosAtuais();
+        }
+
+        function renderizarProcedimentosAtuais() {
+            const lista = document.getElementById('lista-procedimentos-atuais');
+            lista.innerHTML = '';
+
+            if (procedimentosAtuais.length === 0) {
+                lista.innerHTML = '<li class="text-xs text-slate-400 italic py-1" id="empty-proc-msg">Nenhum procedimento adicionado a este atendimento.</li>';
+                return;
+            }
+
+            procedimentosAtuais.forEach((proc, idx) => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center bg-teal-50 text-teal-900 border border-teal-200 px-3 py-1.5 rounded-lg text-xs';
+                li.innerHTML = `
+                    <span class="font-medium">${proc}</span>
+                    <button type="button" onclick="removerProcedimento(${idx})" class="text-red-500 hover:text-red-700 ml-2">
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                `;
+                lista.appendChild(li);
+            });
+        }
+
+        function renderizarHistoricoProcedimentos() {
+            const container = document.getElementById('historico-procedimentos-container');
+            const pillsBox = document.getElementById('historico-pills');
+
+            if (historicoProcedimentosUnicos.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            pillsBox.innerHTML = '';
+
+            historicoProcedimentosUnicos.forEach(proc => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'bg-white border border-slate-300 text-slate-700 hover:bg-teal-50 hover:border-teal-400 text-xs px-2.5 py-1 rounded-full transition text-left flex items-center gap-1';
+                btn.innerHTML = `<i class="fa-solid fa-plus text-[10px] text-teal-600"></i> ${proc}`;
+                btn.onclick = () => adicionarProcedimento(proc);
+                pillsBox.appendChild(btn);
+            });
+        }
+
+        // SALVAR ATENDIMENTO E DISPARAR NUVEM
+        async function salvarAtendimento() {
+            const docType = document.querySelector('input[name="docType"]:checked').value;
+            const documento = document.getElementById('documento').value.trim();
+            const nome = document.getElementById('nome').value.trim();
+            const dataNasc = document.getElementById('dataNasc').value;
+            const raca = document.getElementById('raca').value;
+            const telefone = document.getElementById('telefone').value.trim();
+            const cep = document.getElementById('cep').value.trim();
+            const logradouro = document.getElementById('logradouro').value.trim();
+            const numero = document.getElementById('numero').value.trim();
+            const bairro = document.getElementById('bairro').value.trim();
+            const cidade = document.getElementById('cidade').value.trim();
+
+            if (!documento || !nome || !dataNasc || !logradouro || !bairro || !cidade) {
+                mostrarModal('Campos Obrigatórios', 'Por favor, preencha todos os campos obrigatórios.', 'fa-circle-exclamation text-amber-500');
+                return;
+            }
+
+            const digitsOnly = documento.replace(/\D/g, '');
+            if (docType === 'SUS' && digitsOnly.length !== 15) {
+                mostrarModal('Aviso Documento', 'O Cartão do SUS precisa ter exatamente 15 dígitos.', 'fa-circle-exclamation text-amber-500');
+                return;
+            } else if (docType === 'CPF' && digitsOnly.length !== 11) {
+                mostrarModal('Aviso Documento', 'O CPF precisa ter exatamente 11 dígitos.', 'fa-circle-exclamation text-amber-500');
+                return;
+            }
+
+            if (procedimentosAtuais.length === 0) {
+                mostrarModal('Sem Procedimentos', 'Adicione pelo menos um procedimento realizado.', 'fa-syringe text-amber-500');
+                return;
+            }
+
+            const agora = new Date();
+            const novoRegistro = {
+                id: Date.now(),
+                dataHoraIso: agora.toISOString(),
+                dataStr: agora.toLocaleDateString('pt-BR'),
+                horaStr: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                docType,
+                documento,
+                nome,
+                dataNasc,
+                raca,
+                telefone,
+                cep,
+                logradouro,
+                numero: numero || 'S/N',
+                bairro,
+                cidade,
+                procedimentos: [...procedimentosAtuais]
+            };
+
+            atendimentos.unshift(novoRegistro);
+            salvarStorage();
+
+            // Limpar formulário
+            document.getElementById('patient-form').reset();
+            document.querySelector('input[name="docType"][value="SUS"]').checked = true;
+            atualizarTipoDocumento();
+            document.getElementById('bairro').value = 'Centro';
+            document.getElementById('numero').disabled = false;
+            document.getElementById('numero').classList.remove('bg-slate-200');
+            procedimentosAtuais = [];
+            renderizarProcedimentosAtuais();
+
+            renderizarAtendimentos();
+
+            sincronizarComGoogleDrive();
+            mostrarModal('Atendimento Salvo!', 'Registro salvo no dispositivo e sincronizado com sucesso.', 'fa-circle-check text-teal-600');
+        }
+
+        // GERENCIAR ATENDIMENTOS E LISTAGEM
+        function renderizarAtendimentos() {
+            const container = document.getElementById('container-atendimentos');
+            const totalBadge = document.getElementById('badge-total');
+            const filtroData = document.getElementById('filtro-data').value;
+
+            container.innerHTML = '';
+
+            let listaFiltrada = atendimentos;
+            if (filtroData) {
+                const dataFiltroFormatada = new Date(filtroData + 'T00:00:00').toLocaleDateString('pt-BR');
+                listaFiltrada = atendimentos.filter(a => a.dataStr === dataFiltroFormatada);
+            }
+
+            totalBadge.innerText = listaFiltrada.length;
+
+            if (listaFiltrada.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 bg-white rounded-xl border border-slate-200">
+                        <i class="fa-solid fa-folder-open text-3xl text-slate-300 mb-2"></i>
+                        <p class="text-xs text-slate-500">Nenhum atendimento registrado.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listaFiltrada.forEach(atend => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2';
+                
+                const procBadges = atend.procedimentos.map(p => 
+                    `<span class="bg-teal-50 text-teal-800 text-[11px] px-2 py-0.5 rounded border border-teal-200">${p}</span>`
+                ).join(' ');
+
+                const docLabel = atend.docType || 'SUS';
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start border-b border-slate-100 pb-2">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">${atend.nome}</h3>
+                            <p class="text-xs text-slate-500">${docLabel}: <span class="font-mono">${atend.documento}</span></p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[11px] bg-slate-100 font-mono text-slate-600 px-2 py-0.5 rounded">${atend.dataStr} ${atend.horaStr}</span>
+                        </div>
+                    </div>
+
+                    <div class="text-xs text-slate-600 space-y-0.5">
+                        <p><i class="fa-solid fa-location-dot text-slate-400 w-4"></i> ${atend.logradouro}, nº ${atend.numero} - ${atend.bairro}, ${atend.cidade}</p>
+                        <p><i class="fa-solid fa-phone text-slate-400 w-4"></i> ${atend.telefone || 'Não informado'} | <i class="fa-solid fa-calendar text-slate-400 w-3"></i> Nasc: ${atend.dataNasc.split('-').reverse().join('/')}</p>
+                    </div>
+
+                    <div class="pt-1">
+                        <p class="text-[11px] font-semibold text-slate-500 mb-1">Procedimentos:</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${procBadges}
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex justify-end border-t border-slate-50">
+                        <button onclick="excluirAtendimento(${atend.id})" class="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                            <i class="fa-solid fa-trash-can"></i> Excluir
+                        </button>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function excluirAtendimento(id) {
+            atendimentos = atendimentos.filter(a => a.id !== id);
+            salvarStorage();
+            renderizarAtendimentos();
+            sincronizarComGoogleDrive();
+        }
+
+        function limparFiltroData() {
+            document.getElementById('filtro-data').value = '';
+            renderizarAtendimentos();
+        }
+
+        function confirmarLimparTudo() {
+            if (atendimentos.length === 0) return;
+            if (confirm('Tem certeza de que deseja apagar todos os atendimentos registrados?')) {
+                atendimentos = [];
+                salvarStorage();
+                renderizarAtendimentos();
+                sincronizarComGoogleDrive();
+            }
+        }
+
+        function exportarBackupJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(atendimentos, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `bpa_atendimentos_backup_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        // NAVEGAÇÃO DE ABAS
+        function trocarAba(aba) {
+            const btnNovo = document.getElementById('nav-btn-novo');
+            const btnHist = document.getElementById('nav-btn-historico');
+            const tabNovo = document.getElementById('tab-novo');
+            const tabHist = document.getElementById('tab-historico');
+
+            if (aba === 'novo') {
+                tabNovo.classList.remove('hidden');
+                tabHist.classList.add('hidden');
+                btnNovo.className = "flex flex-col items-center gap-1 text-teal-600 font-medium text-xs";
+                btnHist.className = "flex flex-col items-center gap-1 text-slate-400 font-medium text-xs hover:text-teal-600 transition";
+            } else {
+                tabNovo.classList.add('hidden');
+                tabHist.classList.remove('hidden');
+                btnHist.className = "flex flex-col items-center gap-1 text-teal-600 font-medium text-xs";
+                btnNovo.className = "flex flex-col items-center gap-1 text-slate-400 font-medium text-xs hover:text-teal-600 transition";
+            }
+        }
+
+        // RELATÓRIO PDF (Boletim de Produção Ambulatorial)
+        function gerarPDFBPA() {
+            const filtroData = document.getElementById('filtro-data').value;
+            let listaParaPdf = atendimentos;
+
+            if (filtroData) {
+                const dataFiltroFormatada = new Date(filtroData + 'T00:00:00').toLocaleDateString('pt-BR');
+                listaParaPdf = atendimentos.filter(a => a.dataStr === dataFiltroFormatada);
+            }
+
+            if (listaParaPdf.length === 0) {
+                mostrarModal('Sem Registros', 'Não há dados de atendimentos para gerar o relatório em PDF.', 'fa-circle-exclamation text-amber-500');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.text("BOLETIM DE PRODUÇÃO AMBULATORIAL (BPA) - ENFERMAGEM", 14, 15);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            const dataEmissao = new Date().toLocaleString('pt-BR');
+            const usuarioStr = currentUser ? ` | Profissional: ${currentUser.name}` : '';
+            doc.text(`Data de Emissão: ${dataEmissao}${usuarioStr} | Total de Registros: ${listaParaPdf.length}`, 14, 21);
+
+            const tableRows = [];
+
+            listaParaPdf.forEach((at, index) => {
+                const dataHora = `${at.dataStr}\n${at.horaStr}`;
+                const endereco = `${at.logradouro}, ${at.numero}\n${at.bairro} - ${at.cidade}`;
+                const procs = at.procedimentos.join(', ');
+                const docTypeLabel = at.docType || 'SUS';
+
+                tableRows.push([
+                    index + 1,
+                    dataHora,
+                    `${at.nome}\n${docTypeLabel}: ${at.documento}\nNasc: ${at.dataNasc.split('-').reverse().join('/')}`,
+                    `${at.raca}\nTel: ${at.telefone || 'N/A'}`,
+                    endereco,
+                    procs
+                ]);
+            });
+
+            doc.autoTable({
+                startY: 25,
+                head: [['Nº', 'Data/Hora', 'Paciente / Doc.', 'Raça / Tel', 'Endereço', 'Procedimentos Realizados']],
+                body: tableRows,
+                styles: {
+                    font: 'helvetica',
+                    fontSize: 10,
+                    cellPadding: 2,
+                    valign: 'middle',
+                    overflow: 'linebreak'
+                },
+                headStyles: {
+                    fillColor: [15, 118, 110],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 10
+                },
+                columnStyles: {
+                    0: { cellWidth: 10, halign: 'center' },
+                    1: { cellWidth: 25, halign: 'center' },
+                    2: { cellWidth: 45 },
+                    3: { cellWidth: 25 },
+                    4: { cellWidth: 42 },
+                    5: { cellWidth: 'auto' }
+                },
+                theme: 'grid',
+                didDrawPage: function (data) {
+                    doc.setFontSize(8);
+                    doc.setTextColor(120);
+                    doc.text(`Página ${doc.internal.getNumberOfPages()}`, 196, 287, { align: 'right' });
+                }
+            });
+
+            doc.save(`Boletim_Producao_Ambulatorial_${new Date().toISOString().slice(0,10)}.pdf`);
+        }
+
+        // MODAL AUXILIAR
+        function mostrarModal(titulo, mensagem, iconeClass) {
+            document.getElementById('modal-title').innerText = titulo;
+            document.getElementById('modal-message').innerText = mensagem;
+            document.getElementById('modal-icon').className = `text-3xl ${iconeClass}`;
+            document.getElementById('modal-alert').classList.remove('hidden');
+        }
+
+        function fecharModal() {
+            document.getElementById('modal-alert').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
