@@ -8,10 +8,9 @@ import {
   Search,
   MapPin,
   Phone,
-  CloudCheck,
   AlertTriangle,
   FolderOpen,
-  Filter
+  X
 } from 'lucide-react';
 import { Atendimento, UserProfile } from '../types';
 import { gerarPdfBpa, exportarCsvBpa, exportarJsonBackup } from '../services/pdfService';
@@ -31,12 +30,23 @@ export const ListaAtendimentos: React.FC<ListaAtendimentosProps> = ({
 }) => {
   const [filtroData, setFiltroData] = useState<string>('');
   const [buscaTexto, setBuscaTexto] = useState<string>('');
+  const [avisoFiltro, setAvisoFiltro] = useState<string | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<Atendimento | null>(null);
   const [confirmarLimparGeral, setConfirmarLimparGeral] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  // Filtered List
+  const normalizeText = (text: string) =>
+    text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  // Filtered List by date, patient name, or CNS number
   const atendimentosFiltrados = useMemo(() => {
+    const queryRaw = buscaTexto.trim();
+    const queryNorm = normalizeText(queryRaw);
+    const queryDigits = queryRaw.replace(/\D/g, '');
+
     return atendimentos.filter((at) => {
       // Date filter
       if (filtroData) {
@@ -46,14 +56,15 @@ export const ListaAtendimentos: React.FC<ListaAtendimentosProps> = ({
         }
       }
 
-      // Text search
-      if (buscaTexto.trim()) {
-        const query = buscaTexto.toLowerCase().trim();
-        const matchesNome = at.nome.toLowerCase().includes(query);
-        const matchesDoc = at.documento.replace(/\D/g, '').includes(query.replace(/\D/g, ''));
-        const matchesBairro = at.bairro.toLowerCase().includes(query);
-        const matchesProc = at.procedimentos.some((p) => p.toLowerCase().includes(query));
-        if (!matchesNome && !matchesDoc && !matchesBairro && !matchesProc) {
+      // Search by patient name or CNS (document) number
+      if (queryRaw) {
+        const matchesNome = normalizeText(at.nome).includes(queryNorm);
+        const docDigits = at.documento.replace(/\D/g, '');
+        const matchesCns =
+          (queryDigits.length > 0 && docDigits.includes(queryDigits)) ||
+          at.documento.toLowerCase().includes(queryRaw.toLowerCase());
+
+        if (!matchesNome && !matchesCns) {
           return false;
         }
       }
@@ -65,9 +76,10 @@ export const ListaAtendimentos: React.FC<ListaAtendimentosProps> = ({
   // Handle Export PDF
   const handleExportPdf = () => {
     if (atendimentosFiltrados.length === 0) {
-      alert('Não há atendimentos para o filtro selecionado.');
+      setAvisoFiltro('Não há atendimentos para exportar com o filtro atual.');
       return;
     }
+    setAvisoFiltro(null);
     const dataFiltroFormatada = filtroData
       ? new Date(filtroData + 'T00:00:00').toLocaleDateString('pt-BR')
       : undefined;
@@ -77,9 +89,10 @@ export const ListaAtendimentos: React.FC<ListaAtendimentosProps> = ({
   // Handle Export CSV
   const handleExportCsv = () => {
     if (atendimentosFiltrados.length === 0) {
-      alert('Não há registros para exportar.');
+      setAvisoFiltro('Não há registros para exportar com o filtro atual.');
       return;
     }
+    setAvisoFiltro(null);
     exportarCsvBpa(atendimentosFiltrados);
   };
 
@@ -120,25 +133,53 @@ export const ListaAtendimentos: React.FC<ListaAtendimentosProps> = ({
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative">
-          <input
-            type="text"
-            value={buscaTexto}
-            onChange={(e) => setBuscaTexto(e.target.value)}
-            placeholder="Buscar por nome, SUS/CPF ou procedimento..."
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          {buscaTexto && (
-            <button
-              onClick={() => setBuscaTexto('')}
-              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600"
-            >
-              Limpar
-            </button>
-          )}
+        {/* Search Bar: Patient Name or CNS */}
+        <div>
+          <label
+            htmlFor="busca-atendimento"
+            className="block text-[11px] font-medium text-slate-600 mb-1"
+          >
+            Pesquisar paciente ou número do CNS
+          </label>
+          <div className="relative">
+            <input
+              id="busca-atendimento"
+              type="search"
+              value={buscaTexto}
+              onChange={(e) => {
+                setBuscaTexto(e.target.value);
+                if (avisoFiltro) setAvisoFiltro(null);
+              }}
+              placeholder="Buscar por nome do paciente ou número do CNS..."
+              aria-label="Pesquisar atendimentos pelo nome do paciente ou número do CNS"
+              className="w-full pl-9 pr-9 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+            {buscaTexto && (
+              <button
+                type="button"
+                onClick={() => setBuscaTexto('')}
+                aria-label="Limpar pesquisa"
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
+
+        {avisoFiltro && (
+          <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-center justify-between">
+            <span>{avisoFiltro}</span>
+            <button
+              type="button"
+              onClick={() => setAvisoFiltro(null)}
+              className="text-amber-600 hover:text-amber-800 p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Date Filters */}
         <div className="grid grid-cols-2 gap-2">

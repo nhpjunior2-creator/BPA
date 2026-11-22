@@ -10,6 +10,7 @@ export const InstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [showManualHint, setShowManualHint] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if dismissed before in session
@@ -32,7 +33,7 @@ export const InstallPrompt: React.FC = () => {
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
-      alert('Para instalar no Android: Abra as opções do Chrome (⋮) e selecione "Instalar aplicativo" ou "Adicionar à tela inicial".');
+      setShowManualHint(true);
       return;
     }
     deferredPrompt.prompt();
@@ -59,7 +60,11 @@ export const InstallPrompt: React.FC = () => {
         </div>
         <div>
           <h4 className="font-bold text-xs leading-tight">Instalar App no Android</h4>
-          <p className="text-[11px] text-teal-200">Acesse em tela cheia direto da tela inicial</p>
+          <p className="text-[11px] text-teal-200">
+            {showManualHint
+              ? 'No Chrome (⋮), toque em "Instalar aplicativo" ou "Adicionar à tela inicial".'
+              : 'Acesse em tela cheia direto da tela inicial'}
+          </p>
         </div>
       </div>
 

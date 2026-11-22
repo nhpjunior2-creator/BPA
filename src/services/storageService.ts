@@ -1,8 +1,11 @@
 import { Atendimento, UserProfile } from '../types';
 
-const STORAGE_KEY_ATENDIMENTOS = 'bpa_atendimentos';
-const STORAGE_KEY_PROCEDIMENTOS = 'bpa_procedimentos_historico';
-const STORAGE_KEY_PROFILE = 'bpa_user_profile';
+const LEGACY_ATENDIMENTOS_KEY = 'bpa_atendimentos';
+const STORAGE_KEY_ATENDIMENTOS_PREFIX = 'bpa_atendimentos_';
+const STORAGE_KEY_PROCEDIMENTOS_PREFIX = 'bpa_procedimentos_historico_';
+const LEGACY_PROCEDIMENTOS_KEY = 'bpa_procedimentos_historico';
+const STORAGE_KEY_PROFILE_PREFIX = 'bpa_user_profile_';
+const LEGACY_PROFILE_KEY = 'bpa_user_profile';
 
 export const PROCEDIMENTOS_PADRAO: string[] = [
   'Aferição de Pressão Arterial',
@@ -22,11 +25,35 @@ export const PROCEDIMENTOS_PADRAO: string[] = [
   'Avaliação Antropométrica (Peso/Altura)'
 ];
 
-export function loadLocalAtendimentos(): Atendimento[] {
+function getAtendimentosKey(uid = 'local_user'): string {
+  return `${STORAGE_KEY_ATENDIMENTOS_PREFIX}${uid}`;
+}
+
+function getProcedimentosKey(uid = 'local_user'): string {
+  return `${STORAGE_KEY_PROCEDIMENTOS_PREFIX}${uid}`;
+}
+
+function getProfileKey(uid = 'local_user'): string {
+  return `${STORAGE_KEY_PROFILE_PREFIX}${uid}`;
+}
+
+export function loadLocalAtendimentos(uid = 'local_user'): Atendimento[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_ATENDIMENTOS);
-    if (raw) {
-      return JSON.parse(raw);
+    const scopedRaw = localStorage.getItem(getAtendimentosKey(uid));
+    if (scopedRaw) {
+      const parsed = JSON.parse(scopedRaw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+
+    // Fallback/migration from legacy global key only for local_user or matching userId
+    if (uid === 'local_user') {
+      const legacyRaw = localStorage.getItem(LEGACY_ATENDIMENTOS_KEY);
+      if (legacyRaw) {
+        const parsed = JSON.parse(legacyRaw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((a: Atendimento) => !a.userId || a.userId === 'local_user');
+        }
+      }
     }
   } catch (e) {
     console.error('Error loading local atendimentos:', e);
@@ -34,17 +61,28 @@ export function loadLocalAtendimentos(): Atendimento[] {
   return [];
 }
 
-export function saveLocalAtendimentos(list: Atendimento[]): void {
+export function saveLocalAtendimentos(list: Atendimento[], uid = 'local_user'): void {
   try {
-    localStorage.setItem(STORAGE_KEY_ATENDIMENTOS, JSON.stringify(list));
+    localStorage.setItem(getAtendimentosKey(uid), JSON.stringify(list));
   } catch (e) {
     console.error('Error saving local atendimentos:', e);
   }
 }
 
-export function loadLocalProcedimentos(): string[] {
+export function clearLocalDraftAtendimentos(): void {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_PROCEDIMENTOS);
+    localStorage.removeItem(getAtendimentosKey('local_user'));
+    localStorage.removeItem(LEGACY_ATENDIMENTOS_KEY);
+  } catch (e) {
+    console.error('Error clearing local draft atendimentos:', e);
+  }
+}
+
+export function loadLocalProcedimentos(uid = 'local_user'): string[] {
+  try {
+    const raw =
+      localStorage.getItem(getProcedimentosKey(uid)) ||
+      localStorage.getItem(LEGACY_PROCEDIMENTOS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -57,17 +95,19 @@ export function loadLocalProcedimentos(): string[] {
   return PROCEDIMENTOS_PADRAO;
 }
 
-export function saveLocalProcedimentos(list: string[]): void {
+export function saveLocalProcedimentos(list: string[], uid = 'local_user'): void {
   try {
-    localStorage.setItem(STORAGE_KEY_PROCEDIMENTOS, JSON.stringify(list));
+    localStorage.setItem(getProcedimentosKey(uid), JSON.stringify(list));
   } catch (e) {
     console.error('Error saving local procedimentos:', e);
   }
 }
 
-export function loadLocalProfile(): Partial<UserProfile> | null {
+export function loadLocalProfile(uid = 'local_user'): Partial<UserProfile> | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_PROFILE);
+    const raw =
+      localStorage.getItem(getProfileKey(uid)) ||
+      (uid === 'local_user' ? localStorage.getItem(LEGACY_PROFILE_KEY) : null);
     if (raw) {
       return JSON.parse(raw);
     }
@@ -77,9 +117,9 @@ export function loadLocalProfile(): Partial<UserProfile> | null {
   return null;
 }
 
-export function saveLocalProfile(profile: Partial<UserProfile>): void {
+export function saveLocalProfile(profile: Partial<UserProfile>, uid = 'local_user'): void {
   try {
-    localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(profile));
+    localStorage.setItem(getProfileKey(uid), JSON.stringify(profile));
   } catch (e) {
     console.error('Error saving local profile:', e);
   }
